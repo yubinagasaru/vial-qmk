@@ -1,0 +1,6 @@
+#pragma once
+
+#define HAL_USE_SPI TRUE
+#define SPI_SELECT_MODE SPI_SELECT_MODE_PAD   // àÍî ìIÇ»ê›íË
+
+#include_next <halconf.h>
