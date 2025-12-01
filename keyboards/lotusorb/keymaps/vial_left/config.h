@@ -7,8 +7,8 @@
 // 右手側のTRRS配線: TX=GP6, RX=GP7
 
 #define SERIAL_USART_FULL_DUPLEX
-#define SERIAL_USART_TX_PIN GP6
-#define SERIAL_USART_RX_PIN GP7
+#define SERIAL_USART_TX_PIN GP7
+#define SERIAL_USART_RX_PIN GP6
 
 // --- 右手 Matrix ピン ---------------------------------
 #undef MATRIX_ROW_PINS
