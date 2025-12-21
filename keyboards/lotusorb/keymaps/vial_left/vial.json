@@ -1,11 +1,64 @@
 {
-    "name": "1746589890564",
+    "name": "LotusOrb",
     "vendorId": "0xFEED",
-    "productId": "0x0000",
+    "productId": "0x4C01",
+
     "matrix": {
         "rows": 8,
         "cols": 6
     },
+
+    "customKeycodes": [
+        {
+            "name": "L_Click",
+            "title": "Mouse Left Click (primary mouse button)",
+            "shortName": "ML"
+        },
+        {
+            "name": "R_Click",
+            "title": "Mouse Right Click (secondary mouse button)",
+            "shortName": "MR"
+        },
+        {
+            "name": "M_Click",
+            "title": "Mouse Middle Click (wheel button)",
+            "shortName": "MM"
+        },
+
+        {
+            "name": "Scroll",
+            "title": "Enter Scroll Mode (convert trackball movement into scrolling)",
+            "shortName": "SCR"
+        },
+        {
+            "name": "V_REV",
+            "title": "Toggle Vertical Scroll Direction (invert up/down)",
+            "shortName": "VREV"
+        },
+        {
+            "name": "H_REV",
+            "title": "Toggle Horizontal Scroll Direction (invert left/right)",
+            "shortName": "HREV"
+        },
+
+        {
+            "name": "GATE_UP",
+            "title": "Increase Gate Threshold (enter clickable mode requires more movement)",
+            "shortName": "GUP"
+        },
+        {
+            "name": "GATE_DN",
+            "title": "Decrease Gate Threshold (enter clickable mode requires less movement)",
+            "shortName": "GDN"
+        },
+
+        {
+            "name": "CPI",
+            "title": "Toggle CPI (cycle through predefined sensitivity levels)",
+            "shortName": "CPI"
+        }
+    ],
+
     "layouts": {
         "labels": [
             [
@@ -21,9 +74,7 @@
                 "0,3\n\n\n0,0",
                 "0,4\n\n\n0,0",
                 "0,5\n\n\n0,0",
-                {
-                    "x": 3
-                },
+                { "x": 3 },
                 "4,0\n\n\n0,0",
                 "4,1\n\n\n0,0",
                 "4,2\n\n\n0,0",
@@ -38,9 +89,7 @@
                 "1,3\n\n\n0,0",
                 "1,4\n\n\n0,0",
                 "1,5\n\n\n0,0",
-                {
-                    "x": 3
-                },
+                { "x": 3 },
                 "5,0\n\n\n0,0",
                 "5,1\n\n\n0,0",
                 "5,2\n\n\n0,0",
@@ -56,9 +105,7 @@
                 "2,4\n\n\n0,0",
                 "2,5\n\n\n0,0",
                 "3,5\n\n\n0,0",
-                {
-                    "x": 1
-                },
+                { "x": 1 },
                 "7,0\n\n\n0,0",
                 "6,0\n\n\n0,0",
                 "6,1\n\n\n0,0",
@@ -70,21 +117,15 @@
             [
                 "3,0\n\n\n0,0",
                 "3,1\n\n\n0,0",
-                {
-                    "x": 2
-                },
+                { "x": 2 },
                 "3,2\n\n\n0,0",
                 "3,3\n\n\n0,0",
                 "3,4\n\n\n0,0",
-                {
-                    "x": 1
-                },
+                { "x": 1 },
                 "7,1\n\n\n0,0",
                 "7,2\n\n\n0,0",
                 "7,3\n\n\n0,0",
-                {
-                    "x": 2
-                },
+                { "x": 2 },
                 "7,4\n\n\n0,0",
                 "7,5\n\n\n0,0"
             ]

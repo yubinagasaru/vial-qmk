@@ -15,3 +15,8 @@
 #define DEBOUNCE 5
 
 #define POINTING_DEVICE_DEBUG
+
+#ifdef VIAL_ENABLE
+#    undef DYNAMIC_KEYMAP_LAYER_COUNT
+#    define DYNAMIC_KEYMAP_LAYER_COUNT 6
+#endif
