@@ -24,7 +24,7 @@
 #define PMW33XX_CS_PIN GP13
 
 // --- Vial 関連 ----------------------------------------------
-#define VIAL_KEYBOARD_UID {0x27, 0xdb, 0x27, 0x97, 0xcf, 0x02, 0x66, 0x6c}
+#define VIAL_KEYBOARD_UID {0x11, 0xAB, 0x70, 0x76, 0x0B, 0xAE, 0xCC, 0x1}
 #define VIAL_TAP_DANCE_ENTRIES 8
 #define VIAL_COMBO_ENTRIES 8
 
