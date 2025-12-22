@@ -1,14 +1,17 @@
 #include QMK_KEYBOARD_H
 #include "keymap_japanese.h"
 
+#ifdef SPLIT_KEYBOARD
+#    include "transactions.h"
+#endif
+
+// ----------------------
+// デバッグ用（必要なら）
+// ----------------------
 void matrix_scan_user(void) {
-    // USBを刺しているほう（マスター側）だけログ出す
     if (!is_keyboard_master()) {
         return;
     }
-
-    // 行数・列数に合わせて配列サイズを変える
-    // lotusorb は rows=8, cols=6 前提で書いてる
     static bool last[MATRIX_ROWS][MATRIX_COLS] = {0};
 
     for (uint8_t r = 0; r < MATRIX_ROWS; r++) {
@@ -22,19 +25,20 @@ void matrix_scan_user(void) {
     }
 }
 
-// 先にレイヤーを定義しておく（_L1 を関数内で使うため）
+/* ─────────────────────────────
+ * レイヤー定義
+ * ──────────────────────────── */
 enum layer_names {
     _BASE,
     _L1,
     _L2,
-    _L3,   // 追加
-    _L4,   // 追加
-    _L5,   // 元 _L3（トラボ用レイヤー）
+    _L3,
+    _L4,
+    _L5,
 };
 
 /* ─────────────────────────────
  * Vial 用 custom keycode 定義
- * ここを QK_KB_0 起点にしておく
  * ──────────────────────────── */
 enum custom_keycodes {
     M_L = QK_KB_0,   // Vial: "M-L"       - Mouse Left Click
@@ -45,41 +49,35 @@ enum custom_keycodes {
     VREV,            // Vial: "V-Rev"     - Reverse vertical scroll direction
     HREV,            // Vial: "H-Rev"     - Reverse horizontal scroll direction
 
-    GATE_UP,         // Vial: "Gate-Up"   - Raise threshold (enter clickable mode harder)
-    GATE_DN,         // Vial: "Gate-Down" - Lower threshold (enter clickable mode easier)
+    GATE_UP,         // Vial: "Gate-Up"   - Raise threshold
+    GATE_DN,         // Vial: "Gate-Down" - Lower threshold
 
-    CPI_TG           // Vial: "CPI-TG"    - Toggle CPI value
+    CPI_TG,          // Vial: "CPI-TG"    - Toggle CPI value (RIGHT only)
+
+    EE_RST           // Vial: "EE-RST"    - Reset EEPROM + reboot
 };
 
-#ifdef POINTING_DEVICE_ENABLE
-#    include "print.h"
-
 /////////////////////////////
-/// miniZone + トラボ設定 ///
-/////////////////////////////
-
-/////////////////////////////
-/// CPI 設定 ここから ///
+/// CPI 設定
 /////////////////////////////
 #ifndef COCOT_CPI_OPTIONS
 #    define COCOT_CPI_OPTIONS { 1000, 1600, 2200, 2800, 3400 }
 #endif
 #ifndef COCOT_CPI_DEFAULT
-#    define COCOT_CPI_DEFAULT 2
+#    define COCOT_CPI_DEFAULT 3
 #endif
 
-uint16_t cpi_array[] = COCOT_CPI_OPTIONS;
+static uint16_t cpi_array[] = COCOT_CPI_OPTIONS;
 #define CPI_OPTION_SIZE (sizeof(cpi_array) / sizeof(uint16_t))
-/////////////////////////////
-/// CPI 設定 ここまで ///
-/////////////////////////////
+
+#define LEFT_CPI_FIXED 1600
 
 enum click_state {
     NONE = 0,
-    WAITING,    // マウスレイヤーが有効になるのを待つ
-    CLICKABLE,  // マウスレイヤー有効(クリック入力受付中)
-    CLICKING,   // クリック中
-    SCROLLING   // スクロール中
+    WAITING,
+    CLICKABLE,
+    CLICKING,
+    SCROLLING
 };
 
 typedef union {
@@ -88,120 +86,142 @@ typedef union {
         int16_t to_clickable_movement;
         bool    mouse_scroll_v_reverse;
         bool    mouse_scroll_h_reverse;
-        uint8_t cpi_idx; // CPI配列のインデックス
+        uint8_t cpi_idx; // 右CPIのインデックス（保存用）
     };
 } user_config_t;
 
-user_config_t user_config;
+static user_config_t user_config;
 
-enum click_state state; // 現在の状態
-uint16_t        click_timer; // 状態判定用タイマー
+static enum click_state state;
+static uint16_t click_timer;
 
-uint16_t to_reset_time = 1000; // CLICKABLE状態の維持時間(ms)
+static uint16_t to_reset_time = 1000;
+static const uint16_t click_layer = _L5;
 
-// ★ トラボレイヤーは _L5 にする（_L2 はキーマップの LT 用）
-//   ※レイヤー追加に伴い、元 _L3 を _L5 に移動
-const uint16_t click_layer = _L5;
+static int16_t scroll_v_mouse_interval_counter;
+static int16_t scroll_h_mouse_interval_counter;
 
-int16_t scroll_v_mouse_interval_counter;
-int16_t scroll_h_mouse_interval_counter;
+static int16_t scroll_v_threshold = 50;
+static int16_t scroll_h_threshold = 50;
 
-int16_t scroll_v_threshold = 50;
-int16_t scroll_h_threshold = 50;
+#define LEFT_SCROLL_V_MULT 3
+#define LEFT_SCROLL_H_MULT 2
 
-int16_t after_click_lock_movement = 0;
+static int16_t after_click_lock_movement = 0;
 
-int16_t mouse_record_threshold = 30; // 未使用だが保持
-int16_t mouse_move_count_ratio = 5;  // 未使用だが保持
+static const uint16_t ignore_disable_mouse_layer_keys[] = { KC_LGUI, KC_LCTL };
+static int16_t mouse_movement;
 
-const uint16_t ignore_disable_mouse_layer_keys[] = { KC_LGUI, KC_LCTL };
-
-int16_t mouse_movement;
-
-// ★ マウスボタン状態（ドラッグ用）：ビット 0=L, 1=R, 2=M
 static uint8_t mouse_buttons = 0;
 
-// 左トラボ専用のスクロール／矢印用の累積
 static int16_t left_scroll_v_accum = 0;
 static int16_t left_scroll_h_accum = 0;
 static int16_t left_arrow_x_accum  = 0;
 static int16_t left_arrow_y_accum  = 0;
 
-// ----------------------
-// 初期化まわり
-// ----------------------
-void eeconfig_init_user(void) {
-    user_config.raw                    = 0;
-    user_config.to_clickable_movement  = 50;
-    // ★ 縦スクロールの初期向きを「今と逆」にする（true で反転ON）
-    user_config.mouse_scroll_v_reverse = false;
-    user_config.mouse_scroll_h_reverse = true;
-    user_config.cpi_idx                = COCOT_CPI_DEFAULT;
-    eeconfig_update_user(user_config.raw);
-}
+static int16_t my_abs(int16_t num) { return num < 0 ? -num : num; }
 
-void keyboard_post_init_user(void) {
-    user_config.raw = eeconfig_read_user();
-    state           = NONE;
-    scroll_v_mouse_interval_counter = 0;
-    scroll_h_mouse_interval_counter = 0;
-    mouse_movement                  = 0;
-
-    // 起動時にCPIを設定
-    if (user_config.cpi_idx >= CPI_OPTION_SIZE) {
-        user_config.cpi_idx = COCOT_CPI_DEFAULT;
-    }
-    pointing_device_set_cpi(cpi_array[user_config.cpi_idx]);
-
-    uprintf("PMW init called\n");
-}
-
-
-// ----------------------
-// 補助関数
-// ----------------------
-void enable_click_layer(void) {
+static void enable_click_layer(void) {
     layer_on(click_layer);
     click_timer = timer_read();
     state       = CLICKABLE;
 }
 
-void disable_click_layer(void) {
+static void disable_click_layer(void) {
     state = NONE;
     layer_off(click_layer);
     scroll_v_mouse_interval_counter = 0;
     scroll_h_mouse_interval_counter = 0;
 }
 
-int16_t my_abs(int16_t num) {
-    if (num < 0) {
-        num = -num;
+#ifdef SPLIT_KEYBOARD
+typedef struct {
+    uint8_t idx;
+} right_cpi_msg_t;
+
+// 「右half」で実行される：右センサーのCPIだけ変更
+static void rpc_set_right_cpi_handler(uint8_t in_len, const void *in_data,
+                                      uint8_t out_len, void *out_data) {
+    (void)out_len;
+    (void)out_data;
+
+    if (in_len < sizeof(right_cpi_msg_t)) return;
+
+    const right_cpi_msg_t *msg = (const right_cpi_msg_t *)in_data;
+    const uint8_t idx = msg->idx;
+    if (idx >= CPI_OPTION_SIZE) return;
+
+    // 右halfだけが適用する（左は固定CPIなので触らない）
+    if (!is_keyboard_left()) {
+        user_config.cpi_idx = idx;
+        eeconfig_update_user(user_config.raw);
+        pointing_device_set_cpi(cpi_array[idx]);
+        uprintf("RPC: RIGHT set idx=%u cpi=%u\n", idx, cpi_array[idx]);
     }
-    return num;
 }
 
-bool is_clickable_mode(void) {
-    return state == CLICKABLE || state == CLICKING || state == SCROLLING;
+static void set_right_cpi_remote(uint8_t idx) {
+    right_cpi_msg_t msg = { .idx = idx };
+    transaction_rpc_send(RPC_SET_RIGHT_CPI, sizeof(msg), &msg);
+}
+#endif
+
+// ----------------------
+// 初期化
+// ----------------------
+void eeconfig_init_user(void) {
+    user_config.raw                    = 0;
+    user_config.to_clickable_movement  = 50;
+
+    // ★ 初期値を「逆」にしたい、とのことだったのでここで設定
+    user_config.mouse_scroll_v_reverse = true;
+    user_config.mouse_scroll_h_reverse = false;
+
+    user_config.cpi_idx                = COCOT_CPI_DEFAULT;
+    eeconfig_update_user(user_config.raw);
+}
+
+void keyboard_post_init_user(void) {
+    user_config.raw = eeconfig_read_user();
+
+    state = NONE;
+    scroll_v_mouse_interval_counter = 0;
+    scroll_h_mouse_interval_counter = 0;
+    mouse_movement = 0;
+
+    if (user_config.cpi_idx >= CPI_OPTION_SIZE) {
+        user_config.cpi_idx = COCOT_CPI_DEFAULT;
+    }
+
+#ifdef SPLIT_KEYBOARD
+    // ★ RPC handler 登録（これが無いと slave 側で受けられない）
+    transaction_register_rpc(RPC_SET_RIGHT_CPI, rpc_set_right_cpi_handler);
+#endif
+
+    // ★ 起動時：左は固定、右は保存値
+    if (is_keyboard_left()) {
+        pointing_device_set_cpi(LEFT_CPI_FIXED);
+        uprintf("BOOT: LEFT fixed CPI=%u\n", (unsigned)LEFT_CPI_FIXED);
+    } else {
+        pointing_device_set_cpi(cpi_array[user_config.cpi_idx]);
+        uprintf("BOOT: RIGHT idx=%u cpi=%u\n", user_config.cpi_idx, cpi_array[user_config.cpi_idx]);
+    }
+
+    uprintf("PMW init called\n");
 }
 
 // ----------------------
-// トラボ回転補正
+// 回転補正（そのまま）
 // ----------------------
-
-// 右手：
-//  1. 上下反転（Y 反転）
-//  2. そのあと反時計回りに 30° 回転
 static void rotate_right(report_mouse_t *rep) {
     int16_t x0 = rep->x;
     int16_t y0 = rep->y;
 
-    // Step 1: 上下反転
     int16_t x1 = x0;
     int16_t y1 = -y0;
 
-    // Step 2: 反時計回り 30°
-    const float cos30 = 0.866f; // cos(30°)
-    const float sin30 = 0.5f;   // sin(30°)
+    const float cos30 = 0.866f;
+    const float sin30 = 0.5f;
 
     float rx = (float)x1 * cos30 - (float)y1 * sin30;
     float ry = (float)x1 * sin30 + (float)y1 * cos30;
@@ -210,28 +230,21 @@ static void rotate_right(report_mouse_t *rep) {
     rep->y = (int16_t)ry;
 }
 
-// 左手：
-//  1. 右手と向きが 180°違うので 180°回転
-//  2. 次に上下反転（Y 反転）
-//  3. そのうえで時計回りに 30° 回転
 static void rotate_left(report_mouse_t *rep) {
     int16_t x0 = rep->x;
     int16_t y0 = rep->y;
 
-    // Step 1: 180°回転 (x, y) -> (-x, -y)
     int16_t x1 = -x0;
     int16_t y1 = -y0;
 
-    // Step 2: 上下反転 (x1, y1) -> (x2, -y1)
     int16_t x2 = x1;
     int16_t y2 = -y1;
 
-    // Step 3: 時計回り 30° = 反時計回り -30°
     const float cos30 = 0.866f;
     const float sin30 = 0.5f;
 
     float rx = (float)x2 * cos30 + (float)y2 * sin30;
-    float ry = (float)x2 * (-sin30) + (float)y2 * cos30;
+    float ry = (float)y2 * cos30 - (float)x2 * sin30;
 
     rep->x = (int16_t)rx;
     rep->y = (int16_t)ry;
@@ -242,19 +255,17 @@ static void rotate_left(report_mouse_t *rep) {
 // ----------------------
 bool process_record_user(uint16_t keycode, keyrecord_t *record) {
     switch (keycode) {
-        // --- マウスボタン（ドラッグ対応） ---
         case M_L:
         case M_R:
         case M_M: {
             uint8_t btn = 1u << (keycode - M_L);
-
             if (record->event.pressed) {
-                mouse_buttons |= btn;          // ボタン ON
-                state                     = CLICKING;
+                mouse_buttons |= btn;
+                state = CLICKING;
                 after_click_lock_movement = 30;
-                enable_click_layer();         // 手動でマウスレイヤー ON
+                enable_click_layer();
             } else {
-                mouse_buttons &= ~btn;         // ボタン OFF
+                mouse_buttons &= ~btn;
             }
             return false;
         }
@@ -277,62 +288,74 @@ bool process_record_user(uint16_t keycode, keyrecord_t *record) {
         case GATE_DN:
             if (record->event.pressed) {
                 user_config.to_clickable_movement -= 5;
-                if (user_config.to_clickable_movement < 5) {
-                    user_config.to_clickable_movement = 5;
-                }
+                if (user_config.to_clickable_movement < 5) user_config.to_clickable_movement = 5;
                 eeconfig_update_user(user_config.raw);
             }
             return false;
 
         case VREV:
             if (record->event.pressed) {
-                user_config.mouse_scroll_v_reverse =
-                    !user_config.mouse_scroll_v_reverse;
+                user_config.mouse_scroll_v_reverse = !user_config.mouse_scroll_v_reverse;
                 eeconfig_update_user(user_config.raw);
             }
             return false;
 
         case HREV:
             if (record->event.pressed) {
-                user_config.mouse_scroll_h_reverse =
-                    !user_config.mouse_scroll_h_reverse;
+                user_config.mouse_scroll_h_reverse = !user_config.mouse_scroll_h_reverse;
                 eeconfig_update_user(user_config.raw);
             }
             return false;
 
         case CPI_TG:
             if (record->event.pressed) {
-                user_config.cpi_idx =
-                    (user_config.cpi_idx + 1) % CPI_OPTION_SIZE;
+                // ★ 右だけ変更
+                user_config.cpi_idx = (user_config.cpi_idx + 1) % CPI_OPTION_SIZE;
                 eeconfig_update_user(user_config.raw);
-                pointing_device_set_cpi(cpi_array[user_config.cpi_idx]);
+
+                const uint8_t  idx = user_config.cpi_idx;
+                const uint16_t cpi = cpi_array[idx];
+
+                if (!is_keyboard_left()) {
+                    // masterが右（=右halfで実行中）ならローカル適用
+                    pointing_device_set_cpi(cpi);
+                    uprintf("CPI_TG: RIGHT(local) idx=%u cpi=%u\n", idx, cpi);
+                } else {
+#ifdef SPLIT_KEYBOARD
+                    // masterが左なら、右halfへRPCで適用させる
+                    set_right_cpi_remote(idx);
+                    uprintf("CPI_TG: LEFT->RIGHT rpc idx=%u cpi=%u\n", idx, cpi);
+#else
+                    uprintf("CPI_TG: split not enabled\n");
+#endif
+                }
+            }
+            return false;
+
+        case EE_RST:
+            if (record->event.pressed) {
+                eeconfig_init();
+                reset_keyboard();
             }
             return false;
 
         default:
             if (record->event.pressed) {
                 if (state == CLICKING || state == SCROLLING) {
-                    // クリック中 or スクロール中はレイヤー維持
                     enable_click_layer();
                     return false;
                 }
 
-                // 一部キーはマウスレイヤー維持
-                for (int i = 0;
-                     i < (int)(sizeof(ignore_disable_mouse_layer_keys) /
-                               sizeof(ignore_disable_mouse_layer_keys[0]));
-                     i++) {
+                for (int i = 0; i < (int)(sizeof(ignore_disable_mouse_layer_keys) / sizeof(ignore_disable_mouse_layer_keys[0])); i++) {
                     if (keycode == ignore_disable_mouse_layer_keys[i]) {
                         enable_click_layer();
                         return true;
                     }
                 }
-
-                // それ以外のキーが押されたらマウスレイヤー終了
                 disable_click_layer();
             }
+            break;
     }
-
     return true;
 }
 
@@ -340,8 +363,6 @@ bool process_record_user(uint16_t keycode, keyrecord_t *record) {
 // miniZone 本体（オートマウスレイヤー制御）
 // ----------------------
 report_mouse_t pointing_device_task_user(report_mouse_t mouse_report) {
-//    uprintf("motion x=%d y=%d\n", mouse_report.x, mouse_report.y);
-
     int16_t current_x = mouse_report.x;
     int16_t current_y = mouse_report.y;
     int16_t current_h = mouse_report.h;
@@ -366,11 +387,10 @@ report_mouse_t pointing_device_task_user(report_mouse_t mouse_report) {
                 int8_t rep_v = 0;
                 int8_t rep_h = 0;
 
-                // 縦・横のどっちを優先するか判定（元miniZoneそのまま）
+                // 縦・横のどっちを優先するか判定
                 if (my_abs(current_y) * 2 > my_abs(current_x)) {
                     scroll_v_mouse_interval_counter += current_y;
-                    while (my_abs(scroll_v_mouse_interval_counter) >
-                           scroll_v_threshold) {
+                    while (my_abs(scroll_v_mouse_interval_counter) > scroll_v_threshold) {
                         if (scroll_v_mouse_interval_counter < 0) {
                             scroll_v_mouse_interval_counter += scroll_v_threshold;
                             rep_v += scroll_v_threshold;
@@ -381,8 +401,7 @@ report_mouse_t pointing_device_task_user(report_mouse_t mouse_report) {
                     }
                 } else {
                     scroll_h_mouse_interval_counter += current_x;
-                    while (my_abs(scroll_h_mouse_interval_counter) >
-                           scroll_h_threshold) {
+                    while (my_abs(scroll_h_mouse_interval_counter) > scroll_h_threshold) {
                         if (scroll_h_mouse_interval_counter < 0) {
                             scroll_h_mouse_interval_counter += scroll_h_threshold;
                             rep_h += scroll_h_threshold;
@@ -393,7 +412,6 @@ report_mouse_t pointing_device_task_user(report_mouse_t mouse_report) {
                     }
                 }
 
-                // ★ 右トラボ SCRL 用のスクロール量
                 int8_t steps_h = rep_h / scroll_h_threshold;
                 int8_t steps_v = rep_v / scroll_v_threshold;
 
@@ -452,8 +470,7 @@ report_mouse_t pointing_device_task_user(report_mouse_t mouse_report) {
 }
 
 // ----------------------
-// 左トラボ → スクロール変換（_BASE/_L2 など非 _L1 用）
-// 右トラボ(SCRL)と同じロジック＆同じ反転フラグを使用
+// 左トラボ → スクロール変換
 // ----------------------
 static void apply_scroll_from_left(report_mouse_t *out, report_mouse_t left_report) {
     int16_t lx = left_report.x;
@@ -463,7 +480,6 @@ static void apply_scroll_from_left(report_mouse_t *out, report_mouse_t left_repo
         return;
     }
 
-    // ★ 右トラボのSCROLLINGと同じ「steps」を使ったロジックに統一
     int8_t steps_v = 0;
     int8_t steps_h = 0;
 
@@ -491,14 +507,18 @@ static void apply_scroll_from_left(report_mouse_t *out, report_mouse_t left_repo
         }
     }
 
-    // 右トラボと同じ反転フラグ＆符号ルールでスクロール
-    out->h += steps_h * (user_config.mouse_scroll_h_reverse ? -1 : 1);
-    out->v += -steps_v * (user_config.mouse_scroll_v_reverse ? -1 : 1);
+    // 左トラボだけ倍率
+    int16_t delta_h = steps_h * LEFT_SCROLL_H_MULT *
+                      (user_config.mouse_scroll_h_reverse ? -1 : 1);
+    int16_t delta_v = -steps_v * LEFT_SCROLL_V_MULT *
+                      (user_config.mouse_scroll_v_reverse ? -1 : 1);
+
+    out->h += delta_h;
+    out->v += delta_v;
 }
 
 // ----------------------
 // 左トラボ → 矢印キー変換（_L1 用）
-// 「その瞬間に強い方の軸だけ使う」簡易方向固定
 // ----------------------
 static void apply_arrows_from_left(report_mouse_t left_report) {
     int16_t lx = left_report.x;
@@ -508,12 +528,9 @@ static void apply_arrows_from_left(report_mouse_t left_report) {
         return;
     }
 
-    const int16_t arrow_threshold = 40; // 感度はここで調整
-
-    // どっちの軸を使うか決める（その瞬間の強い方）
+    const int16_t arrow_threshold = 40;
 
     if (my_abs(lx) >= my_abs(ly)) {
-        // 横優先：縦の累積はリセットして「→→→↓→→→」を抑える
         left_arrow_y_accum = 0;
         left_arrow_x_accum += lx;
 
@@ -526,7 +543,6 @@ static void apply_arrows_from_left(report_mouse_t left_report) {
             left_arrow_x_accum += arrow_threshold;
         }
     } else {
-        // 縦優先：横の累積はリセット
         left_arrow_x_accum = 0;
         left_arrow_y_accum += ly;
 
@@ -543,9 +559,6 @@ static void apply_arrows_from_left(report_mouse_t left_report) {
 
 // ----------------------
 // COMBINED 用：左右トラボ統合
-// 右：カーソル（回転補正あり）
-// 左：BASE/L2/L3/L4/L5→スクロール, L1→矢印
-// BASE のときだけ miniZone によるオートマウスレイヤー遷移を有効
 // ----------------------
 report_mouse_t pointing_device_task_combined_user(report_mouse_t left_report,
                                                   report_mouse_t right_report) {
@@ -558,11 +571,11 @@ report_mouse_t pointing_device_task_combined_user(report_mouse_t left_report,
 
     uint8_t top_layer = get_highest_layer(layer_state);
 
-    // ★ センサー由来レポートは x/y/h/v だけ使い、buttons は mouse_buttons 統一管理
+    // センサー由来レポートは x/y/h/v だけ使い、buttons は mouse_buttons 統一管理
     report_mouse_t merged = (report_mouse_t){0};
     merged.buttons = mouse_buttons;
 
-    // --- L1 のとき：左=矢印、右=カーソル（オートマウスレイヤーなし） ---
+    // L1 のとき：左=矢印、右=カーソル
     if (top_layer == _L1) {
         if (left_active) {
             apply_arrows_from_left(left_report);
@@ -576,7 +589,6 @@ report_mouse_t pointing_device_task_combined_user(report_mouse_t left_report,
         return merged;
     }
 
-    // --- L1 以外（_BASE, _L2, _L3, _L4, _L5...） ---
     // 右トラボ = カーソル
     if (right_active) {
         merged.x = right_report.x;
@@ -590,7 +602,7 @@ report_mouse_t pointing_device_task_combined_user(report_mouse_t left_report,
         apply_scroll_from_left(&merged, left_report);
     }
 
-    // BASE のときだけ miniZone のオートレイヤー制御を通す
+    // BASE のときだけ miniZone のオートレイヤー制御
     if (top_layer == _BASE) {
         merged = pointing_device_task_user(merged);
     }
@@ -598,19 +610,9 @@ report_mouse_t pointing_device_task_combined_user(report_mouse_t left_report,
     return merged;
 }
 
-/////////////////////////////
-/// miniZone + トラボ設定 ここまで ///
-/////////////////////////////
-
-#endif // POINTING_DEVICE_ENABLE
-
-/* この下に、今使っている keymaps[] 定義をそのまま置いておけばOK */
-
-
 // =========================
 // キーマップ
 // =========================
-
 const uint16_t PROGMEM keymaps[][MATRIX_ROWS][MATRIX_COLS] = {
 
     [_BASE] = LAYOUT(
@@ -622,7 +624,7 @@ const uint16_t PROGMEM keymaps[][MATRIX_ROWS][MATRIX_COLS] = {
         KC_Y,    KC_U,    KC_I,    KC_O,    KC_P,     KC_MINS,
         KC_H,    KC_J,    KC_K,    KC_L,    KC_SCLN,  KC_QUOTE,
         KC_N,    KC_M,    KC_COMM, KC_DOT,  KC_SLSH,  KC_INT1,
-        KC_BSPC, M_L,     KC_ENT,  KC_LBRC, KC_LEFT,  KC_RGHT
+        KC_BSPC, M_L,     KC_ENT,  KC_LBRC, KC_LEFT,  LT(_L4, KC_RGHT)
     ),
 
     [_L1] = LAYOUT(
@@ -650,13 +652,11 @@ const uint16_t PROGMEM keymaps[][MATRIX_ROWS][MATRIX_COLS] = {
     ),
 
     [_L3] = LAYOUT(
-        // 左手
         KC_TAB,  KC_F1,   KC_F2,   KC_F3,   KC_F4,   KC_F5,
         KC_LGUI, KC_F6,   KC_F7,   KC_F8,   KC_F9,   KC_F10,
         KC_LSFT, KC_F11,  KC_F12, _______, _______, _______,
         KC_LCTL, KC_LALT,_______, KC_SPC,  _______, KC_DEL,
 
-        // 右手（左端列は元のキーを残しておく）
         _______, _______, _______, _______, _______, _______,
         _______, _______, _______, _______, _______, _______,
         _______, _______, _______, _______, _______, _______,
@@ -664,20 +664,17 @@ const uint16_t PROGMEM keymaps[][MATRIX_ROWS][MATRIX_COLS] = {
     ),
 
     [_L4] = LAYOUT(
-        // 左手
-        _______, _______,  GATE_UP,   _______,   _______,   _______,
-        _______, VREV,     CPI_TG,    HREV,      _______,   _______,
-        _______, _______,  GATE_DN,   _______,   _______,   _______,
-        _______, _______,  _______,   _______,   _______,   _______,
+        _______, _______, _______,  GATE_UP,   _______,   _______,
+        _______, _______, VREV,     CPI_TG,    HREV,      _______,
+        _______, _______, _______,  GATE_DN,   _______,   _______,
+        _______, _______, _______,  _______,   _______,   _______,
 
-        // 右手（透過）
         _______, _______, _______, _______, _______, _______,
         _______, _______, _______, _______, _______, _______,
         _______, _______, _______, _______, _______, _______,
         _______, _______, _______, _______, _______, _______
     ),
 
-    // 元 _L3 のマウスレイヤー → _L5 に移動
     [_L5] = LAYOUT(
         KC_TAB,  _______, _______, _______, _______, _______,
         KC_LGUI, _______, _______, M_M,    _______, _______,
