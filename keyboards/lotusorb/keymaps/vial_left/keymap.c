@@ -174,7 +174,7 @@ void eeconfig_init_user(void) {
     user_config.to_clickable_movement  = 50;
 	
     user_config.mouse_scroll_v_reverse = true;
-    user_config.mouse_scroll_h_reverse = false;
+    user_config.mouse_scroll_h_reverse = true;
 
     user_config.cpi_idx                = COCOT_CPI_DEFAULT;
     eeconfig_update_user(user_config.raw);
@@ -681,7 +681,7 @@ const uint16_t PROGMEM keymaps[][MATRIX_ROWS][MATRIX_COLS] = {
         KC_LCTL, KC_LALT, _______, _______, _______, _______,
 
         SCRL,    M_R,     _______, _______, _______, _______,
-        M_M,     _______, _______, _______, _______, _______,
+        _______, _______, _______, _______, _______, _______,
         _______, _______, _______, _______, _______, _______,
         _______, M_L,     KC_ENT, _______, _______, _______
     ),

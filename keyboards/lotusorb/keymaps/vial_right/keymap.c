@@ -6,7 +6,7 @@
 #endif
 
 // ----------------------
-// デバッグ用（必要なら）
+// デバッグ用
 // ----------------------
 void matrix_scan_user(void) {
     if (!is_keyboard_master()) {
@@ -172,10 +172,9 @@ static void set_right_cpi_remote(uint8_t idx) {
 void eeconfig_init_user(void) {
     user_config.raw                    = 0;
     user_config.to_clickable_movement  = 50;
-
-    // ★ 初期値を「逆」にしたい、とのことだったのでここで設定
+	
     user_config.mouse_scroll_v_reverse = true;
-    user_config.mouse_scroll_h_reverse = false;
+    user_config.mouse_scroll_h_reverse = true;
 
     user_config.cpi_idx                = COCOT_CPI_DEFAULT;
     eeconfig_update_user(user_config.raw);
@@ -194,7 +193,7 @@ void keyboard_post_init_user(void) {
     }
 
 #ifdef SPLIT_KEYBOARD
-    // ★ RPC handler 登録（これが無いと slave 側で受けられない）
+    // ★ RPC handler 登録
     transaction_register_rpc(RPC_SET_RIGHT_CPI, rpc_set_right_cpi_handler);
 #endif
 
@@ -211,7 +210,7 @@ void keyboard_post_init_user(void) {
 }
 
 // ----------------------
-// 回転補正（そのまま）
+// 回転補正
 // ----------------------
 static void rotate_right(report_mouse_t *rep) {
     int16_t x0 = rep->x;
@@ -682,7 +681,7 @@ const uint16_t PROGMEM keymaps[][MATRIX_ROWS][MATRIX_COLS] = {
         KC_LCTL, KC_LALT, _______, _______, _______, _______,
 
         SCRL,    M_R,     _______, _______, _______, _______,
-        M_M,     _______, _______, _______, _______, _______,
+        _______, _______, _______, _______, _______, _______,
         _______, _______, _______, _______, _______, _______,
         _______, M_L,     KC_ENT, _______, _______, _______
     ),
