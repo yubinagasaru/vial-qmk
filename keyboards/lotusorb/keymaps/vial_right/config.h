@@ -1,6 +1,6 @@
 #pragma once
 
-#define MASTER_RIGHT
+#define EE_HANDS
 
 // --- 右手ファーム用設定 ------------------------------------
 // RP2040 + SERIAL_DRIVER = vendor 前提（rules.mk 側で設定）
