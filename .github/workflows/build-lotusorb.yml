@@ -1,0 +1,51 @@
+name: Build LotusOrb firmware
+
+on:
+  push:
+    paths:
+      - 'keyboards/lotusorb/**'
+      - '.github/workflows/build-lotusorb.yml'
+  pull_request:
+    paths:
+      - 'keyboards/lotusorb/**'
+      - '.github/workflows/build-lotusorb.yml'
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: lotusorb-${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  build:
+    name: Build ${{ matrix.keymap }}
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+    container: ghcr.io/qmk/qmk_cli@sha256:2dc05fc9f32efebd6b05c2b8676ee548358bc7e151e9dbf4dac6b6eed4513b07
+    strategy:
+      fail-fast: false
+      matrix:
+        keymap: [vial_left, vial_right]
+    steps:
+      - name: Checkout source and submodules
+        uses: actions/checkout@v4
+        with:
+          persist-credentials: false
+          submodules: recursive
+
+      - name: Build UF2
+        env:
+          KEYMAP: ${{ matrix.keymap }}
+        run: |
+          git config --global --add safe.directory "$GITHUB_WORKSPACE"
+          qmk compile -kb lotusorb -km "$KEYMAP"
+
+      - name: Upload UF2
+        uses: actions/upload-artifact@v4
+        with:
+          name: lotusorb-${{ matrix.keymap }}
+          path: lotusorb_${{ matrix.keymap }}.uf2
+          if-no-files-found: error
+          retention-days: 30
