@@ -105,8 +105,8 @@ static int16_t scroll_h_mouse_interval_counter;
 static int16_t scroll_v_threshold = 50;
 static int16_t scroll_h_threshold = 50;
 
-#define LEFT_SCROLL_V_MULT 3
-#define LEFT_SCROLL_H_MULT 2
+#define LEFT_SCROLL_V_MULT 1
+#define LEFT_SCROLL_H_MULT 1
 
 static int16_t after_click_lock_movement = 0;
 
