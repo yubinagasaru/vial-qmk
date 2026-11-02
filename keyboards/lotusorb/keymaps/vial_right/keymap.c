@@ -105,8 +105,8 @@ static int16_t scroll_h_mouse_interval_counter;
 static int16_t scroll_v_threshold = 50;
 static int16_t scroll_h_threshold = 50;
 
-#define LEFT_SCROLL_V_MULT 3
-#define LEFT_SCROLL_H_MULT 2
+#define LEFT_SCROLL_V_MULT 1
+#define LEFT_SCROLL_H_MULT 1
 
 static int16_t after_click_lock_movement = 0;
 
@@ -473,6 +473,11 @@ report_mouse_t pointing_device_task_user(report_mouse_t mouse_report) {
 // 左トラボ → スクロール変換
 // ----------------------
 static void apply_scroll_from_left(report_mouse_t *out, report_mouse_t left_report) {
+    // Match SCR + right trackball at its default 2800 CPI.
+    // Left stays at 1600 CPI: round(50 * 1600 / 2800) = 29.
+    const int16_t left_scroll_v_threshold = 29;
+    const int16_t left_scroll_h_threshold = 29;
+
     int16_t lx = left_report.x;
     int16_t ly = left_report.y;
 
@@ -485,24 +490,24 @@ static void apply_scroll_from_left(report_mouse_t *out, report_mouse_t left_repo
 
     // 縦方向
     left_scroll_v_accum += ly;
-    while (my_abs(left_scroll_v_accum) > scroll_v_threshold) {
+    while (my_abs(left_scroll_v_accum) > left_scroll_v_threshold) {
         if (left_scroll_v_accum < 0) {
-            left_scroll_v_accum += scroll_v_threshold;
+            left_scroll_v_accum += left_scroll_v_threshold;
             steps_v++;
         } else {
-            left_scroll_v_accum -= scroll_v_threshold;
+            left_scroll_v_accum -= left_scroll_v_threshold;
             steps_v--;
         }
     }
 
     // 横方向
     left_scroll_h_accum += lx;
-    while (my_abs(left_scroll_h_accum) > scroll_h_threshold) {
+    while (my_abs(left_scroll_h_accum) > left_scroll_h_threshold) {
         if (left_scroll_h_accum < 0) {
-            left_scroll_h_accum += scroll_h_threshold;
+            left_scroll_h_accum += left_scroll_h_threshold;
             steps_h++;
         } else {
-            left_scroll_h_accum -= scroll_h_threshold;
+            left_scroll_h_accum -= left_scroll_h_threshold;
             steps_h--;
         }
     }
